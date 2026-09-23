@@ -86,3 +86,21 @@ button {
 
 .workout-card h4 { margin: 0 0 5px 0; color: #111; }
 .workout-card p { margin: 5px 0; font-size: 14px; color: #666; }
+
+select {
+    width: 100%;
+    padding: 12px;
+    border-radius: 8px;
+    border: 1px solid #ccc;
+    font-size: 16px;
+    background: #fff;
+    margin-top: 5px;
+}
+.booking-box {
+    background: #f0f7f4;
+    padding: 15px;
+    border-radius: 8px;
+    margin-bottom: 25px;
+    border: 1px solid #d4edda;
+}
+
