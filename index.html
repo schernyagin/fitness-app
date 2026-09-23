@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Фитнес Расписание</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="app">
+        <!-- Экран авторизации -->
+        <section id="screen-login" class="screen active">
+            <h2>Вход в систему</h2>
+            <div class="form-group">
+                <label for="username">Ваше имя / Логин тренера:</label>
+                <input type="text" id="username" placeholder="Введите имя">
+            </div>
+            <button id="btn-login-user">Войти как Подопечный</button>
+            <button id="btn-login-coach" class="btn-secondary">Войти как Тренер</button>
+        </section>
+
+        <!-- Экран подопечного -->
+        <section id="screen-client" class="screen">
+            <header>
+                <h2>Привет, <span id="client-name">Подопечный</span>!</h2>
+                <button class="btn-logout">Выйти</button>
+            </header>
+            <h3>Доступные тренировки:</h3>
+            <div id="client-schedule" class="schedule-list">
+                <!-- Сюда JS вставит карточки тренировок -->
+            </div>
+        </section>
+
+        <!-- Экран тренера -->
+        <section id="screen-coach" class="screen">
+            <header>
+                <h2>Панель тренера</h2>
+                <button class="btn-logout">Выйти</button>
+            </header>
+            
+            <!-- Форма добавления тренировки -->
+            <div class="coach-actions">
+                <h3>Добавить тренировку</h3>
+                <input type="text" id="new-title" placeholder="Название (например, Кроссфит)">
+                <input type="datetime-local" id="new-time">
+                <input type="number" id="new-capacity" placeholder="Макс. мест (например, 10)">
+                <button id="btn-add-workout">Создать тренировку</button>
+            </div>
+
+            <h3>Управление расписанием:</h3>
+            <div id="coach-schedule" class="schedule-list">
+                <!-- Сюда JS вставит тренировки с возможностью удаления/редактирования -->
+            </div>
+        </section>
+    </div>
+
+    <script href="app.js"></script>
+</body>
+</html>
