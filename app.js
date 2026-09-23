@@ -181,19 +181,31 @@ function getEndTime(timeStr) {
     return (h < 10 ? "0" + h : h) + ":" + parts[1];
 }
 
-// Обработчик кнопки бронирования у подопечного
-document.getElementById('btn-book-client').addEventListener('click', (e) => {
+// НАДЕЖНЫЙ ОБРАБОТЧИК: Кнопка отвиснет в любом случае
+document.getElementById('btn-book-client').addEventListener('click', async (e) => {
     const select = document.getElementById('client-time-select');
     const selectedTime = select.value;
     if(!selectedTime || selectedTime.includes("Нет")) return;
     
+    // Визуально блокируем кнопку, чтобы избежать повторных кликов
     e.target.innerText = "Бронирование...";
     e.target.disabled = true;
     
-    sendAction({
+    // Запускаем отправку данных в таблицу
+    await sendAction({
         action: "book",
         time: selectedTime,
         user: currentUser
     });
+
+    // ПРИНУДИТЕЛЬНЫЙ СБРОС КНОПКИ: 
+    // Если через 2.5 секунды страница не обновилась сама, возвращаем кнопку в рабочий режим
+    setTimeout(() => {
+        if (e.target) {
+            e.target.innerText = "Забронировать это время";
+            e.target.disabled = false;
+        }
+    }, 2500);
 });
+
 
