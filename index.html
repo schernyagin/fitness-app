@@ -7,7 +7,7 @@
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <div id="app">
+        <div id="app">
         <!-- Экран авторизации -->
         <section id="screen-login" class="screen active">
             <h2>Вход в систему</h2>
@@ -25,9 +25,19 @@
                 <h2>Привет, <span id="client-name">Подопечный</span>!</h2>
                 <button class="btn-logout">Выйти</button>
             </header>
-            <h3>Доступные тренировки:</h3>
-            <div id="client-schedule" class="schedule-list">
-                <!-- Сюда JS вставит карточки тренировок -->
+            
+            <div class="booking-box">
+                <h3>Записаться на тренировку</h3>
+                <label for="client-time-select">Выберите свободное время (сессия — 1 час):</label>
+                <select id="client-time-select">
+                    <!-- Сюда JS добавит только доступные опции типа 08:00, 08:30... -->
+                </select>
+                <button id="btn-book-client" style="margin-top: 10px;">Забронировать это время</button>
+            </div>
+
+            <h3>Ваша текущая запись:</h3>
+            <div id="client-my-booking">
+                <!-- Показывает, на какое время записан подопечный -->
             </div>
         </section>
 
@@ -38,22 +48,13 @@
                 <button class="btn-logout">Выйти</button>
             </header>
             
-            <!-- Форма добавления тренировки -->
-            <div class="coach-actions">
-                <h3>Добавить тренировку</h3>
-                <input type="text" id="new-title" placeholder="Название (например, Кроссфит)">
-                <input type="datetime-local" id="new-time">
-                <input type="number" id="new-capacity" placeholder="Макс. мест (например, 10)">
-                <button id="btn-add-workout">Создать тренировку</button>
-            </div>
-
-            <h3>Управление расписанием:</h3>
+            <h3>Занятые интервалы на сегодня:</h3>
             <div id="coach-schedule" class="schedule-list">
-                <!-- Сюда JS вставит тренировки с возможностью удаления/редактирования -->
+                <!-- Сюда JS выведет список тех, кто занял время -->
             </div>
         </section>
     </div>
+    <script src="app.js"></script>
 
-    <script src="app.js"></script> 
 </body>
 </html>
