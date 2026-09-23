@@ -1,27 +1,20 @@
-// Инициализация тестовых данных, если LocalStorage пустой
-if (!localStorage.getItem('workouts')) {
-    const sampleWorkouts = [
-        { id: 1, title: 'Йога Утро', time: '2026-10-10T09:00', capacity: 10, clients: [] },
-        { id: 2, title: 'Кроссфит Интенсив', time: '2026-10-10T19:00', capacity: 5, clients: ['Иван'] }
-    ];
-    localStorage.setItem('workouts', JSON.stringify(sampleWorkouts));
-}
+// ВСТАВЬТЕ СЮДА ВАШ URL ВЕБ-ПРИЛОЖЕНИЯ ИЗ ШАГА 3
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzlNbN80JmI0CWQ_kFxDrHlzvfBiAZk--JFx_yhZahGHuVFWcQo6iJJ-kSpm38dFzxO/exec";
 
 let currentUser = null;
 let isCoach = false;
+let globalWorkouts = []; // Хранилище данных в памяти для быстрого рендеринга
 
-// Элементы экранов
 const screens = {
     login: document.getElementById('screen-login'),
     client: document.getElementById('screen-client'),
     coach: document.getElementById('screen-coach')
 };
 
-// Функция переключения экранов
 function switchScreen(screenName) {
     Object.values(screens).forEach(s => s.classList.remove('active'));
     screens[screenName].classList.add('active');
-    render();
+    loadAndRender(); // При каждом переключении экрана загружаем свежие данные
 }
 
 // Авторизация
@@ -50,24 +43,48 @@ document.querySelectorAll('.btn-logout').forEach(btn => {
     });
 });
 
-// Логика расписания
-function getWorkouts() {
-    return JSON.parse(localStorage.getItem('workouts')) || [];
+// Загрузка данных из Google Таблицы
+async function loadAndRender() {
+    // Показываем индикатор загрузки вместо пустого экрана (опционально)
+    const clientCont = document.getElementById('client-schedule');
+    const coachCont = document.getElementById('coach-schedule');
+    if(screens.client.classList.contains('active')) clientCont.innerHTML = '<p>Загрузка расписания...</p>';
+    if(screens.coach.classList.contains('active')) coachCont.innerHTML = '<p>Загрузка расписания...</p>';
+
+    try {
+        const response = await fetch(SCRIPT_URL);
+        globalWorkouts = await response.json();
+        render();
+    } catch (error) {
+        console.error("Ошибка загрузки данных:", error);
+        alert("Не удалось загрузить данные с сервера.");
+    }
 }
 
-function saveWorkouts(workouts) {
-    localStorage.setItem('workouts', JSON.stringify(workouts));
-    render();
+// Отправка команд на сервер (Google Sheets)
+async function sendAction(payload) {
+    try {
+        const response = await fetch(SCRIPT_URL, {
+            method: 'POST',
+            mode: 'no-cors', // Позволяет отправлять запросы без CORS-ошибок в Apps Script
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        // Из-за режима no-cors мы не можем прочитать ответ сервера, 
+        // поэтому просто ждем секунду и обновляем интерфейс локально
+        setTimeout(loadAndRender, 1500); 
+    } catch (error) {
+        console.error("Ошибка отправки данных:", error);
+    }
 }
 
-// Рендеринг данных на экранах
+// Отрисовка интерфейса
 function render() {
-    const workouts = getWorkouts();
-
     if (screens.client.classList.contains('active')) {
         const container = document.getElementById('client-schedule');
-        container.innerHTML = '';
-        workouts.forEach(w => {
+        container.innerHTML = globalWorkouts.length === 0 ? '<p>Тренировок пока нет.</p>' : '';
+        
+        globalWorkouts.forEach(w => {
             const isSignedUp = w.clients.includes(currentUser);
             const spotsLeft = w.capacity - w.clients.length;
             
@@ -75,20 +92,23 @@ function render() {
             card.className = 'workout-card';
             card.innerHTML = `
                 <h4>${w.title}</h4>
-                <p>📅 Время: ${new Date(w.time).toLocaleString()}</p>
-                <p>👥 Мест осталось: ${spotsLeft} из ${w.capacity}</p>
+                <p>📅 Время: ${new Date(w.time).toLocaleString('ru-RU', {day:'numeric', month:'long', hour:'2-digit', minute:'2-digit'})}</p>
+                <p>👥 Мест осталось: ${spotsLeft > 0 ? spotsLeft : 0} из ${w.capacity}</p>
                 <button class="${isSignedUp ? 'btn-danger' : ''}" ${spotsLeft <= 0 && !isSignedUp ? 'disabled' : ''}>
                     ${isSignedUp ? 'Отменить запись' : (spotsLeft > 0 ? 'Записаться' : 'Мест нет')}
                 </button>
             `;
             
             card.querySelector('button').addEventListener('click', () => {
-                if (isSignedUp) {
-                    w.clients = w.clients.filter(c => c !== currentUser);
-                } else {
-                    w.clients.push(currentUser);
-                }
-                saveWorkouts(workouts);
+                // Оптимистичный UI: сразу меняем кнопку, чтобы пользователь видел отклик
+                card.querySelector('button').innerText = "Обработка...";
+                card.querySelector('button').disabled = true;
+                
+                sendAction({
+                    action: "toggleSignUp",
+                    id: w.id,
+                    user: currentUser
+                });
             });
             container.appendChild(card);
         });
@@ -96,19 +116,22 @@ function render() {
 
     if (screens.coach.classList.contains('active')) {
         const container = document.getElementById('coach-schedule');
-        container.innerHTML = '';
-        workouts.forEach(w => {
+        container.innerHTML = globalWorkouts.length === 0 ? '<p>Расписание пусто.</p>' : '';
+        
+        globalWorkouts.forEach(w => {
             const card = document.createElement('div');
             card.className = 'workout-card';
             card.innerHTML = `
                 <h4>${w.title}</h4>
-                <p>📅 Время: ${new Date(w.time).toLocaleString()}</p>
-                <p>👥 Записаны (${w.clients.length}/${w.capacity}): ${w.clients.join(', ') || 'никто'}</p>
+                <p>📅 Время: ${new Date(w.time).toLocaleString('ru-RU', {day:'numeric', month:'long', hour:'2-digit', minute:'2-digit'})}</p>
+                <p>👥 Записаны (${w.clients.length}/${w.capacity}): <b>${w.clients.join(', ') || 'никто'}</b></p>
                 <button class="btn-danger">Удалить тренировку</button>
             `;
             card.querySelector('.btn-danger').addEventListener('click', () => {
-                const filtered = workouts.filter(item => item.id !== w.id);
-                saveWorkouts(filtered);
+                if(confirm(`Удалить тренировку "${w.title}"?`)) {
+                    card.querySelector('.btn-danger').innerText = "Удаление...";
+                    sendAction({ action: "delete", id: w.id });
+                }
             });
             container.appendChild(card);
         });
@@ -117,23 +140,28 @@ function render() {
 
 // Добавление тренировки тренером
 document.getElementById('btn-add-workout').addEventListener('click', () => {
-    const title = document.getElementById('new-title').value;
+    const title = document.getElementById('new-title').value.trim();
     const time = document.getElementById('new-time').value;
     const capacity = parseInt(document.getElementById('new-capacity').value);
 
     if (!title || !time || !capacity) return alert('Заполните все поля');
 
-    const workouts = getWorkouts();
-    workouts.push({
-        id: Date.now(),
+    const newWorkout = {
+        id: Date.now().toString(),
         title,
         time,
-        capacity,
-        clients: []
-    });
+        capacity
+    };
+
+    document.getElementById('btn-add-workout').innerText = "Создание...";
     
-    saveWorkouts(workouts);
-    document.getElementById('new-title').value = '';
-    document.getElementById('new-time').value = '';
-    document.getElementById('new-capacity').value = '';
+    sendAction({
+        action: "create",
+        workout: newWorkout
+    }).then(() => {
+        document.getElementById('btn-add-workout').innerText = "Создать тренировку";
+        document.getElementById('new-title').value = '';
+        document.getElementById('new-time').value = '';
+        document.getElementById('new-capacity').value = '';
+    });
 });
