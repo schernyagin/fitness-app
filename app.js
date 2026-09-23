@@ -3,7 +3,7 @@ const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzlNbN80JmI0CWQ_kFxD
 
 let currentUser = null;
 let isCoach = false;
-let globalWorkouts = []; // Хранилище данных в памяти для быстрого рендеринга
+let activeBookings = []; // Список всех занятых слотов из БД
 
 const screens = {
     login: document.getElementById('screen-login'),
@@ -14,7 +14,13 @@ const screens = {
 function switchScreen(screenName) {
     Object.values(screens).forEach(s => s.classList.remove('active'));
     screens[screenName].classList.add('active');
-    loadAndRender(); // При каждом переключении экрана загружаем свежие данные
+    loadAndRender(); 
+}
+
+// Перевод времени в минуты от начала дня ("08:30" -> 510)
+function timeToMin(tStr) {
+    const p = tStr.split(":");
+    return parseInt(p[0]) * 60 + parseInt(p[1]);
 }
 
 // Авторизация
@@ -29,7 +35,7 @@ document.getElementById('btn-login-user').addEventListener('click', () => {
 
 document.getElementById('btn-login-coach').addEventListener('click', () => {
     const pin = document.getElementById('username').value.trim();
-    if (pin !== 'admin') return alert('Неверный пароль тренера (используйте admin)');
+    if (pin !== 'admin') return alert('Неверный пароль тренера');
     currentUser = 'Тренер';
     isCoach = true;
     switchScreen('coach');
@@ -43,95 +49,107 @@ document.querySelectorAll('.btn-logout').forEach(btn => {
     });
 });
 
-// Загрузка данных из Google Таблицы
+// Загрузка данных
 async function loadAndRender() {
-    // Показываем индикатор загрузки вместо пустого экрана (опционально)
-    const clientCont = document.getElementById('client-schedule');
-    const coachCont = document.getElementById('coach-schedule');
-    if(screens.client.classList.contains('active')) clientCont.innerHTML = '<p>Загрузка расписания...</p>';
-    if(screens.coach.classList.contains('active')) coachCont.innerHTML = '<p>Загрузка расписания...</p>';
-
     try {
         const response = await fetch(SCRIPT_URL);
-        globalWorkouts = await response.json();
+        const data = await response.json();
+        // Фильтруем только реально занятые строки (где есть имя клиента)
+        activeBookings = data.filter(b => b.client && b.client.trim() !== "");
         render();
     } catch (error) {
-        console.error("Ошибка загрузки данных:", error);
-        alert("Не удалось загрузить данные с сервера.");
+        console.error("Ошибка загрузки:", error);
     }
 }
 
-// Исправленная функция отправки данных без CORS-ошибок
+// Отправка запроса
 async function sendAction(payload) {
     try {
-        const response = await fetch(SCRIPT_URL, {
+        await fetch(SCRIPT_URL, {
             method: 'POST',
-            // Меняем тип контента на text/plain. Это заставит браузер пропустить проверку CORS
             headers: { 'Content-Type': 'text/plain;charset=utf-8' }, 
             body: JSON.stringify(payload)
         });
-        
-        // Ждем чуть-чуть, пока Google обновит таблицу, и обновляем экран
-        setTimeout(loadAndRender, 1500); 
+        setTimeout(loadAndRender, 1200); 
     } catch (error) {
-        console.error("Ошибка отправки данных:", error);
+        console.error("Ошибка отправки:", error);
     }
 }
 
-
-// Отрисовка интерфейса
+// Отрисовка
 function render() {
+    // 1. ЛОГИКА ДЛЯ ПОДОПЕЧНОГО
     if (screens.client.classList.contains('active')) {
-        const container = document.getElementById('client-schedule');
-        container.innerHTML = globalWorkouts.length === 0 ? '<p>Тренировок пока нет.</p>' : '';
+        const select = document.getElementById('client-time-select');
+        const myBookingContainer = document.getElementById('client-my-booking');
+        select.innerHTML = '';
         
-        globalWorkouts.forEach(w => {
-            const isSignedUp = w.clients.includes(currentUser);
-            const spotsLeft = w.capacity - w.clients.length;
-            
-            const card = document.createElement('div');
-            card.className = 'workout-card';
-            card.innerHTML = `
-                <h4>${w.title}</h4>
-                <p>📅 Время: ${new Date(w.time).toLocaleString('ru-RU', {day:'numeric', month:'long', hour:'2-digit', minute:'2-digit'})}</p>
-                <p>👥 Мест осталось: ${spotsLeft > 0 ? spotsLeft : 0} из ${w.capacity}</p>
-                <button class="${isSignedUp ? 'btn-danger' : ''}" ${spotsLeft <= 0 && !isSignedUp ? 'disabled' : ''}>
-                    ${isSignedUp ? 'Отменить запись' : (spotsLeft > 0 ? 'Записаться' : 'Мест нет')}
-                </button>
+        // Проверяем, записан ли уже этот пользователь куда-то
+        const myCurrentBooking = activeBookings.find(b => b.client === currentUser);
+        
+        if (myCurrentBooking) {
+            myBookingContainer.innerHTML = `
+                <div class="workout-card" style="border-left: 5px solid #2196F3;">
+                    <h4>Вы записаны на время: <b>${myCurrentBooking.time} - ${getEndTime(myCurrentBooking.time)}</b></h4>
+                    <button class="btn-danger" id="btn-cancel-my">Отменить запись</button>
+                </div>
             `;
+            document.getElementById('btn-book-client').disabled = true;
+            select.disabled = true;
             
-            card.querySelector('button').addEventListener('click', () => {
-                // Оптимистичный UI: сразу меняем кнопку, чтобы пользователь видел отклик
-                card.querySelector('button').innerText = "Обработка...";
-                card.querySelector('button').disabled = true;
-                
-                sendAction({
-                    action: "toggleSignUp",
-                    id: w.id,
-                    user: currentUser
-                });
+            document.getElementById('btn-cancel-my').addEventListener('click', (e) => {
+                e.target.innerText = "Отмена...";
+                sendAction({ action: "cancel", time: myCurrentBooking.time });
             });
-            container.appendChild(card);
-        });
+        } else {
+            myBookingContainer.innerHTML = '<p>У вас пока нет активных записей на сегодня.</p>';
+            document.getElementById('btn-book-client').disabled = false;
+            select.disabled = false;
+            
+            // Генерируем доступные для выбора опции времени от 08:00 до 21:00
+            for (let h = 8; h <= 21; h++) {
+                const hourStr = h < 10 ? "0" + h : h;
+                ["00", "30"].forEach(m => {
+                    const timeOption = `${hourStr}:${m}`;
+                    
+                    // Проверяем, не пересекается ли эта опция (длиной 1 час) со всеми занятыми в БД
+                    const isAvailable = checkTimeAvailable(timeOption);
+                    
+                    if (isAvailable) {
+                        const opt = document.createElement('option');
+                        opt.value = timeOption;
+                        opt.innerText = `${timeOption} (до ${getEndTime(timeOption)})`;
+                        select.appendChild(opt);
+                    }
+                });
+            }
+            if(select.options.length === 0) {
+                select.innerHTML = '<option>Нет свободных окон на сегодня</option>';
+                document.getElementById('btn-book-client').disabled = true;
+            }
+        }
     }
 
+    // 2. ЛОГИКА ДЛЯ ТРЕНЕРА
     if (screens.coach.classList.contains('active')) {
         const container = document.getElementById('coach-schedule');
-        container.innerHTML = globalWorkouts.length === 0 ? '<p>Расписание пусто.</p>' : '';
+        container.innerHTML = activeBookings.length === 0 ? '<p>На сегодня записей нет. Все время свободно.</p>' : '';
         
-        globalWorkouts.forEach(w => {
+        // Сортируем записи тренера по времени, чтобы они шли по порядку
+        activeBookings.sort((a,b) => timeToMin(a.time) - timeToMin(b.time));
+        
+        activeBookings.forEach(b => {
             const card = document.createElement('div');
             card.className = 'workout-card';
             card.innerHTML = `
-                <h4>${w.title}</h4>
-                <p>📅 Время: ${new Date(w.time).toLocaleString('ru-RU', {day:'numeric', month:'long', hour:'2-digit', minute:'2-digit'})}</p>
-                <p>👥 Записаны (${w.clients.length}/${w.capacity}): <b>${w.clients.join(', ') || 'никто'}</b></p>
-                <button class="btn-danger">Удалить тренировку</button>
+                <h4>⏰ Время: ${b.time} - ${getEndTime(b.time)}</h4>
+                <p>Подопечный: <b style="color:#2196F3;">${b.client}</b></p>
+                <button class="btn-danger">Отменить тренировку и освободить время</button>
             `;
-            card.querySelector('.btn-danger').addEventListener('click', () => {
-                if(confirm(`Удалить тренировку "${w.title}"?`)) {
-                    card.querySelector('.btn-danger').innerText = "Удаление...";
-                    sendAction({ action: "delete", id: w.id });
+            card.querySelector('button').addEventListener('click', (e) => {
+                if (confirm(`Удалить запись клиента ${b.client} на ${b.time}?`)) {
+                    e.target.innerText = "Освобождение...";
+                    sendAction({ action: "cancel", time: b.time });
                 }
             });
             container.appendChild(card);
@@ -139,30 +157,43 @@ function render() {
     }
 }
 
-// Добавление тренировки тренером
-document.getElementById('btn-add-workout').addEventListener('click', () => {
-    const title = document.getElementById('new-title').value.trim();
-    const time = document.getElementById('new-time').value;
-    const capacity = parseInt(document.getElementById('new-capacity').value);
+// Функция проверки: свободно ли время начала и часовой интервал после него
+function checkTimeAvailable(timeStr) {
+    const start = timeToMin(timeStr);
+    const end = start + 60;
+    
+    for (let b of activeBookings) {
+        const bStart = timeToMin(b.time);
+        const bEnd = bStart + 60;
+        
+        // Если интервалы накладываются, то это время недоступно
+        if (Math.max(start, bStart) < Math.min(end, bEnd)) {
+            return false;
+        }
+    }
+    return true;
+}
 
-    if (!title || !time || !capacity) return alert('Заполните все поля');
+// Функция вычисления времени окончания (+1 час)
+function getEndTime(timeStr) {
+    const parts = timeStr.split(":");
+    let h = parseInt(parts[0]) + 1;
+    return (h < 10 ? "0" + h : h) + ":" + parts[1];
+}
 
-    const newWorkout = {
-        id: Date.now().toString(),
-        title,
-        time,
-        capacity
-    };
-
-    document.getElementById('btn-add-workout').innerText = "Создание...";
+// Обработчик кнопки бронирования у подопечного
+document.getElementById('btn-book-client').addEventListener('click', (e) => {
+    const select = document.getElementById('client-time-select');
+    const selectedTime = select.value;
+    if(!selectedTime || selectedTime.includes("Нет")) return;
+    
+    e.target.innerText = "Бронирование...";
+    e.target.disabled = true;
     
     sendAction({
-        action: "create",
-        workout: newWorkout
-    }).then(() => {
-        document.getElementById('btn-add-workout').innerText = "Создать тренировку";
-        document.getElementById('new-title').value = '';
-        document.getElementById('new-time').value = '';
-        document.getElementById('new-capacity').value = '';
+        action: "book",
+        time: selectedTime,
+        user: currentUser
     });
 });
+
