@@ -61,22 +61,23 @@ async function loadAndRender() {
     }
 }
 
-// Отправка команд на сервер (Google Sheets)
+// Исправленная функция отправки данных без CORS-ошибок
 async function sendAction(payload) {
     try {
         const response = await fetch(SCRIPT_URL, {
             method: 'POST',
-            mode: 'no-cors', // Позволяет отправлять запросы без CORS-ошибок в Apps Script
-            headers: { 'Content-Type': 'application/json' },
+            // Меняем тип контента на text/plain. Это заставит браузер пропустить проверку CORS
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' }, 
             body: JSON.stringify(payload)
         });
-        // Из-за режима no-cors мы не можем прочитать ответ сервера, 
-        // поэтому просто ждем секунду и обновляем интерфейс локально
+        
+        // Ждем чуть-чуть, пока Google обновит таблицу, и обновляем экран
         setTimeout(loadAndRender, 1500); 
     } catch (error) {
         console.error("Ошибка отправки данных:", error);
     }
 }
+
 
 // Отрисовка интерфейса
 function render() {
